@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>广州气象与AQI可视化</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="card">
+      <h1>广州（含各区）气象与AQI可视化</h1>
+
+      <div class="controls">
+        <label>
+          区域：
+          <select id="areaSelect" class="select-area">
+            <option value="广州">广州（全市）</option>
+          </select>
+        </label>
+
+        <label>
+          常用辖区：
+          <select id="preferredAreaSelect" class="select-area" style="min-width: 160px;">
+            <option value="">（未设置）</option>
+          </select>
+        </label>
+
+        <button id="savePreferredBtn" class="btn-secondary">保存为常用(最多3个)</button>
+
+        <label>
+          开始：
+          <input type="date" id="startDate" />
+        </label>
+        <label>
+          结束：
+          <input type="date" id="endDate" />
+        </label>
+
+        <button id="applyFilter">应用筛选</button>
+
+        <div class="granularity-group" id="granularityGroup">
+          <button id="granDay" class="btn-secondary gran-btn active" data-gran="day">日</button>
+          <button id="granWeek" class="btn-secondary gran-btn" data-gran="week">周</button>
+          <button id="granMonth" class="btn-secondary gran-btn" data-gran="month">月</button>
+        </div>
+
+        <button id="exportCsvBtn" class="btn-secondary" title="导出当前筛选范围内的原始数据 CSV">导出CSV</button>
+
+        <button id="toggleAdvanced" class="btn-secondary">高级分析</button>
+
+
+        <button id="scrapeNowBtn" class="btn-secondary" title="手动触发采集并入库（不会自动定时）">手动采集数据</button>
+
+        <div class="topbar-user">
+          <span id="userBadge" class="badge" style="display:none;"></span>
+          <button id="openLoginModal" class="btn-secondary">登录/注册</button>
+          <button id="logoutBtn" class="btn-secondary" style="display:none;">退出登录</button>
+        </div>
+      </div>
+
+      <div class="social-actions" id="socialActions" style="margin-top: 10px; justify-content: center;">
+        <button class="social-btn" id="btnLike" data-type="like" title="点赞">
+          <span class="icon">❤</span><span class="count" id="countLike">0</span>
+        </button>
+        <button class="social-btn" id="btnFavorite" data-type="favorite" title="收藏">
+          <span class="icon">★</span><span class="count" id="countFavorite">0</span>
+        </button>
+        <button class="social-btn" id="btnFollow" data-type="follow" title="关注">
+          <span class="icon">＋</span><span class="count" id="countFollow">0</span>
+        </button>
+      </div>
+
+      <div class="hint">
+        提示：选择“广州（全市）”时，趋势为全市按天平均；选择具体区时为该区日数据。
+      </div>
+    </header>
+
+    <section class="user-panel card full" id="userPanel" style="display: none;">
+      <div class="user-panel-tabs">
+        <button class="user-panel-tab active" data-tab="favorites">我的收藏</button>
+        <button class="user-panel-tab" data-tab="history">历史查询</button>
+      </div>
+      <div class="user-panel-content">
+        <div id="favoritesContent" class="user-panel-pane active">
+          <ul id="favoritesList"></ul>
+        </div>
+        <div id="historyContent" class="user-panel-pane">
+          <ul id="historyList"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-title-row">
+          <h2>AQI趋势</h2>
+          <div class="title-actions">
+            <button class="fav-chart-btn" data-chart="aqi_trend" title="收藏该图表">★</button>
+            <button class="help-btn" data-help="aqi_trend" title="怎么看这张图？">?</button>
+          </div>
+        </div>
+        <div id="aqiTrendChart" class="chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title-row">
+          <h2>温度趋势（最高/最低）</h2>
+          <div class="title-actions">
+            <button class="fav-chart-btn" data-chart="temp_trend" title="收藏该图表">★</button>
+            <button class="help-btn" data-help="temp_trend" title="怎么看这张图？">?</button>
+          </div>
+        </div>
+        <div id="tempTrendChart" class="chart"></div>
+      </div>
+
+      <div class="card full">
+        <div class="card-title-row">
+          <h2>各区平均AQI对比</h2>
+          <div class="title-actions">
+            <button class="fav-chart-btn" data-chart="aqi_compare" title="收藏该图表">★</button>
+            <button class="help-btn" data-help="aqi_compare" title="怎么看这张图？">?</button>
+          </div>
+        </div>
+        <div id="aqiCompareChart" class="chart"></div>
+      </div>
+
+      <div class="card full">
+        <div class="card-title-row">
+          <h2>温度与AQI相关性（散点）</h2>
+          <div class="title-actions">
+            <button class="fav-chart-btn" data-chart="temp_aqi_corr" title="收藏该图表">★</button>
+            <button class="help-btn" data-help="temp_aqi_corr" title="怎么看这张图？">?</button>
+          </div>
+        </div>
+        <div id="correlationChart" class="chart"></div>
+        <div id="correlationResult" class="result"></div>
+      </div>
+
+      <!-- 高级分析面板（默认折叠） -->
+      <div id="advancedPanel" class="card full" style="display:none;">
+        <div class="card-title-row">
+          <h2>高级分析（机器学习/多因素关系）</h2>
+          <button class="help-btn" data-help="advanced_intro" title="高级分析说明">?</button>
+        </div>
+
+        <div class="analysis-controls">
+          <label>
+            分析类型：
+            <select id="analysisType">
+              <option value="regression">线性回归：预测AQI与气象因素关系</option>
+              <option value="wind">风力等级/风向 与 AQI</option>
+              <option value="multi">三因素：温度×风力（按天气筛选）热力图</option>
+              <option value="forecast_7d">未来7天AQI预测（时序回归+区间）</option>
+              <option value="selfcheck">模型自检：真实 vs 预测 + MAPE/阈值</option>
+            </select>
+          </label>
+
+          <button id="runAnalysis">运行分析</button>
+          <button id="runSelfCheck" class="btn-secondary">一键运行自检</button>
+          <button id="compareWithSource" class="btn-secondary">对比数据源</button>
+        </div>
+
+        <div id="analysisResults" class="analysis-results"></div>
+      </div>
+
+    </section>
+
+    <footer class="footer">
+      数据来源：2345天气网（你爬取的历史数据） · 数据存储：MySQL · 可视化：ECharts
+    </footer>
+  </div>
+
+  <!-- 登录/注册/重置 弹窗 -->
+  <div id="authModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">用户登录</div>
+        <button class="modal-close" id="authModalClose">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button class="tab active" data-tab="login">登录</button>
+          <button class="tab" data-tab="register">注册</button>
+          <button class="tab" data-tab="reset">重置密码</button>
+        </div>
+
+        <!-- 登录 -->
+        <div class="tab-panel" id="tab-login">
+          <div class="form-row">
+            <label>邮箱</label>
+            <input id="loginEmail" type="email" placeholder="请输入邮箱" />
+          </div>
+          <div class="form-row">
+            <label>密码</label>
+            <input id="loginPassword" type="password" placeholder="请输入密码" />
+          </div>
+          <div class="modal-actions">
+            <button id="loginSubmit">登录</button>
+          </div>
+          <div class="small-tip">提示：登录后可使用收藏/历史查询等功能。</div>
+        </div>
+
+        <!-- 注册 -->
+        <div class="tab-panel" id="tab-register" style="display:none;">
+          <div class="form-row">
+            <label>用户名</label>
+            <input id="regUsername" type="text" placeholder="请输入用户名" />
+          </div>
+          <div class="form-row">
+            <label>邮箱</label>
+            <input id="regEmail" type="email" placeholder="请输入邮箱" />
+          </div>
+          <div class="form-row">
+            <label>密码</label>
+            <input id="regPassword" type="password" placeholder="至少6位" />
+          </div>
+          <div class="modal-actions">
+            <button id="registerSubmit">注册</button>
+          </div>
+          <div class="small-tip">提示：注册成功后请返回登录。</div>
+        </div>
+
+        <!-- 重置密码（简化版：生成 token 并直接确认） -->
+        <div class="tab-panel" id="tab-reset" style="display:none;">
+          <div class="form-row">
+            <label>邮箱</label>
+            <input id="resetEmail" type="email" placeholder="请输入邮箱" />
+          </div>
+          <div class="modal-actions">
+            <button id="resetSubmit">获取重置Token</button>
+          </div>
+          <div class="form-row">
+            <label>Token</label>
+            <input id="resetToken" type="text" placeholder="把上一步返回的token粘贴到这里" />
+          </div>
+          <div class="form-row">
+            <label>新密码</label>
+            <input id="resetNewPassword" type="password" placeholder="至少6位" />
+          </div>
+          <div class="modal-actions">
+            <button id="resetConfirmBtn">确认重置</button>
+          </div>
+          <div class="small-tip">说明：为了演示，重置密码使用“token”方式（实际项目可发邮件）。</div>
+        </div>
+
+        <div id="authMsg" class="small-tip" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图表说明弹窗 -->
+  <div id="helpModal" class="help-backdrop">
+    <div class="help-modal">
+      <div class="help-modal-header">
+        <div id="helpTitle" class="help-modal-title">图表说明</div>
+        <button id="helpClose" class="help-modal-close">×</button>
+      </div>
+      <div id="helpBody" class="help-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/charts.js"></script>
+</body>
+</html>
